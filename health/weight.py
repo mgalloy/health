@@ -10,6 +10,7 @@ import click
 
 
 # TODO: The below should all become command line options eventually
+START_DATE_FMT = "%Y-%m-%d"
 DATE_FMT = "%Y-%m-%d %H:%M:%S"
 START_DATE = ""
 END_DATE = datetime.datetime.now()
@@ -31,10 +32,16 @@ def cli():
     pass
 
 
-def parse_data(filename):
+def parse_data(filename, start):
     df = pd.read_csv(filename)
-    dates = [datetime.datetime.strptime(d, DATE_FMT) for d in df.values[:, 0]]
+    dates = np.array([datetime.datetime.strptime(d, DATE_FMT) for d in df.values[:, 0]])
     weights = df.values[:, 1]
+
+    if start is not None:
+        indices = dates > start
+        dates = dates[indices]
+        weights = weights[indices]
+
     return(dates, weights)
 
 
@@ -68,7 +75,7 @@ def invert_data(dates, weights):
     return(weight_grid, durations)
 
 
-def plot_data(weight_grid, durations, output_filename, verbose=False):
+def plot_data(weight_grid, durations, output_filename, goal, verbose=False):
     n_days = []
     for w, d in zip(weight_grid, durations):
         n_days.append(int(d.total_seconds() / 24.0 / 60.0 / 60.0) if d is not None else 0)
@@ -80,6 +87,9 @@ def plot_data(weight_grid, durations, output_filename, verbose=False):
     ax.plot(weight_grid, n_days)
     plt.yscale("log")
 
+    if goal is not None:
+        ax.axvline(x=goal, color="red", linewidth=1.0)
+
     grid_color = "#e8e8e8"
     plt.grid(which="minor", axis="x", linestyle=":", color=grid_color)
     plt.grid(which="major", axis="x", color=grid_color)
@@ -87,12 +97,21 @@ def plot_data(weight_grid, durations, output_filename, verbose=False):
     plt.grid(which="minor", axis="y", linestyle=":", color=grid_color)
     plt.grid(which="major", axis="y", color=grid_color)
 
+    #ax.xaxis.set_major_locator(matplotlib.ticker.IndexLocator(base=10.0, offset=0.0))
+    ax.xaxis.set_minor_locator(matplotlib.ticker.IndexLocator(base=1.0, offset=0.0))
+
     plt.xlabel("Weight (lbs)")
     plt.ylabel("Days")
 
     plt.title("Time under a given weight", y=1.0)
 
-    t = ax.text(weight_grid[0], n_days[-1], CAPTION.replace("\n", " ").strip(),
+    xlocs, xlabels = plt.xticks()
+    if goal is None:
+        caption_x = xlocs[1] + 1.0
+    else:
+        caption_x = min(xlocs[1], goal) + 1.0
+
+    t = ax.text(caption_x, n_days[-1], CAPTION.replace("\n", " ").strip(),
         va="top", ha="left", fontsize=8, wrap=True,
         bbox=dict(facecolor="white", alpha=0.75, ec="white"))
     t._get_wrap_line_width = lambda : 240.0
@@ -100,19 +119,29 @@ def plot_data(weight_grid, durations, output_filename, verbose=False):
     plt.savefig(output_filename)
 
 
+def weight_date(date_string):
+    """Helper routine to convert a string into a datetime.
+    """
+    return(datetime.datetime.strptime(date_string, START_DATE_FMT))
+
+
 @cli.command()
 @click.help_option("-h", "--help")
-@click.option("--verbose", is_flag=True, help="Open last note with given title.")
+@click.option("--verbose", help="set to display more info", is_flag=True)
+@click.option("--start", help="start date in the format YYYY-MM-DD",
+    type=weight_date, required=False, default=None)
+@click.option("--goal", help="goal weight",
+    type=float, required=False, default=None)
 @click.argument("filename")
-def invert(verbose, filename):
-    dates, weights = parse_data(filename)
+def invert(verbose, start, goal, filename):
+    dates, weights = parse_data(filename, start)
     weight_grid, durations = invert_data(dates, weights)
 
     dirname = os.path.dirname(filename)
     basename = os.path.basename(filename).removesuffix(".csv") + ".pdf"
     output_filename = os.path.join(dirname, basename)
 
-    plot_data(weight_grid, durations, output_filename, verbose=verbose)
+    plot_data(weight_grid, durations, output_filename, goal, verbose=verbose)
 
 
 if __name__ == "__main__":

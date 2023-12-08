@@ -75,7 +75,38 @@ def invert_data(dates, weights):
     return(weight_grid, durations)
 
 
-def plot_data(weight_grid, durations, output_filename, goal, verbose=False):
+def plot_data(dates, weights, output_filename, goal, start_date=None,
+    verbose=False):
+    if start_date is not None:
+        indices = np.where(dates > start_date)[0]
+        dates = dates[indices]
+
+    fig, ax = plt.subplots(figsize=(10.5, 7.5))
+
+    ax.plot(dates, weights)
+
+    if goal is not None:
+        ax.axhline(y=goal, color="red", linewidth=1.0)
+
+    grid_color = "#e8e8e8"
+    plt.grid(which="minor", axis="x", linestyle=":", color=grid_color)
+    plt.grid(which="major", axis="x", color=grid_color)
+
+    plt.grid(which="minor", axis="y", linestyle=":", color=grid_color)
+    plt.grid(which="major", axis="y", color=grid_color)
+
+    ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(10.0))
+    ax.yaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(2.0))
+
+    plt.xlabel("Date")
+    plt.ylabel("Weight (lbs)")
+
+    plt.title("Weight over time", y=1.0)
+
+    plt.savefig(output_filename)
+
+
+def plot_inverted_data(weight_grid, durations, output_filename, goal, verbose=False):
     n_days = []
     for w, d in zip(weight_grid, durations):
         n_days.append(int(d.total_seconds() / 24.0 / 60.0 / 60.0) if d is not None else 0)
@@ -98,6 +129,7 @@ def plot_data(weight_grid, durations, output_filename, goal, verbose=False):
     plt.grid(which="major", axis="y", color=grid_color)
 
     #ax.xaxis.set_major_locator(matplotlib.ticker.IndexLocator(base=10.0, offset=0.0))
+    ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(5.0))
     ax.xaxis.set_minor_locator(matplotlib.ticker.IndexLocator(base=1.0, offset=0.0))
 
     plt.xlabel("Weight (lbs)")
@@ -133,15 +165,35 @@ def weight_date(date_string):
 @click.option("--goal", help="goal weight",
     type=float, required=False, default=None)
 @click.argument("filename")
-def invert(verbose, start, goal, filename):
+def plot(verbose, start, goal, filename):
     dates, weights = parse_data(filename, start)
-    weight_grid, durations = invert_data(dates, weights)
 
     dirname = os.path.dirname(filename)
     basename = os.path.basename(filename).removesuffix(".csv") + ".pdf"
     output_filename = os.path.join(dirname, basename)
 
-    plot_data(weight_grid, durations, output_filename, goal, verbose=verbose)
+    plot_data(dates, weights, output_filename, goal, start_date=start,
+        verbose=verbose)
+
+
+@cli.command()
+@click.help_option("-h", "--help")
+@click.option("--verbose", help="set to display more info", is_flag=True)
+@click.option("--start", help="start date in the format YYYY-MM-DD",
+    type=weight_date, required=False, default=None)
+@click.option("--goal", help="goal weight",
+    type=float, required=False, default=None)
+@click.argument("filename")
+def invert(verbose, start, goal, filename):
+    dates, weights = parse_data(filename, start)
+    weight_grid, durations = invert_data(dates, weights)
+
+    dirname = os.path.dirname(filename)
+    basename = os.path.basename(filename).removesuffix(".csv") + ".inverted.pdf"
+    output_filename = os.path.join(dirname, basename)
+
+    plot_inverted_data(weight_grid, durations, output_filename, goal,
+        verbose=verbose)
 
 
 if __name__ == "__main__":

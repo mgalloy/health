@@ -5,6 +5,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy.signal
 
 import click
 
@@ -12,10 +13,9 @@ import click
 # TODO: The below should all become command line options eventually
 START_DATE_FMT = "%Y-%m-%d"
 DATE_FMT = "%Y-%m-%d %H:%M:%S"
-START_DATE = ""
-END_DATE = datetime.datetime.now()
-GOAL_WEIGHT = 170.0
 N_WEIGHT_STEPS = 5
+
+NOW = datetime.datetime.now()
 
 CAPTION = """
 A typical time series plot of the weight over time prioritizes losing weight,
@@ -58,8 +58,6 @@ def reverse_search(weights, wt):
 
 
 def invert_data(dates, weights):
-    now = datetime.datetime.now()
-
     weight_min = weights.min()
     weight_max = weights.max()
     n_steps = round((weight_max - weight_min) * N_WEIGHT_STEPS + 1)
@@ -70,20 +68,24 @@ def invert_data(dates, weights):
         # find date of first weight bigger than wt moving backwards through
         # weights
         index = reverse_search(weights, wt)
-        durations.append(now - dates[index] if index is not None else None)
+        durations.append(NOW - dates[index] if index is not None else None)
 
     return(weight_grid, durations)
 
 
-def plot_data(dates, weights, output_filename, goal, start_date=None,
+def plot_data(dates, weights, output_filename, goal, trend, start_date=None,
     verbose=False):
     if start_date is not None:
         indices = np.where(dates > start_date)[0]
         dates = dates[indices]
 
-    fig, ax = plt.subplots(figsize=(10.5, 7.5))
+    fig, ax = plt.subplots(figsize=(10.5, 5.5))
 
-    ax.plot(dates, weights)
+    ax.plot(dates, weights, ".")
+
+    if trend is not None:
+        trend_weights = scipy.signal.medfilt(weights, trend)
+        ax.plot(dates, trend_weights, color="#CC5500")
 
     if goal is not None:
         ax.axhline(y=goal, color="red", linewidth=1.0)
@@ -98,15 +100,23 @@ def plot_data(dates, weights, output_filename, goal, start_date=None,
     ax.yaxis.set_major_locator(matplotlib.ticker.MultipleLocator(10.0))
     ax.yaxis.set_minor_locator(matplotlib.ticker.MultipleLocator(2.0))
 
+    ax.spines[['right', 'top']].set_visible(False)
+
     plt.xlabel("Date")
     plt.ylabel("Weight (lbs)")
 
-    plt.title("Weight over time", y=1.0)
+    if start_date is None:
+        since_date = dates[0].strftime("%Y-%m-%d")
+    else:
+        since_date = start_date.strftime("%Y-%m-%d")
+
+    plt.title(f"Weight since {since_date}", y=1.0)
 
     plt.savefig(output_filename)
 
 
-def plot_inverted_data(weight_grid, durations, output_filename, goal, verbose=False):
+def plot_inverted_data(weight_grid, durations, output_filename, goal, start_date,
+    verbose=False):
     n_days = []
     for w, d in zip(weight_grid, durations):
         n_days.append(int(d.total_seconds() / 24.0 / 60.0 / 60.0) if d is not None else 0)
@@ -132,10 +142,19 @@ def plot_inverted_data(weight_grid, durations, output_filename, goal, verbose=Fa
     ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(5.0))
     ax.xaxis.set_minor_locator(matplotlib.ticker.IndexLocator(base=1.0, offset=0.0))
 
+    ax.spines[['right', 'top']].set_visible(False)
+
     plt.xlabel("Weight (lbs)")
     plt.ylabel("Days")
 
-    plt.title("Time under a given weight", y=1.0)
+    if start_date is None:
+        title = "Time under a given weight"
+    else:
+        since_date = start_date.strftime("%Y-%m-%d")
+        n_total_days = round((NOW - start_date).total_seconds() / 24.0 / 60.0 / 60.0)
+        title = f"Time under a given weight since {since_date} ({n_total_days} days)"
+
+    plt.title(title, y=1.0)
 
     xlocs, xlabels = plt.xticks()
     if goal is None:
@@ -164,15 +183,17 @@ def weight_date(date_string):
     type=weight_date, required=False, default=None)
 @click.option("--goal", help="goal weight",
     type=float, required=False, default=None)
+@click.option("--trend", help="number of days to average over for trend line",
+    type=int, required=False, default=None)
 @click.argument("filename")
-def plot(verbose, start, goal, filename):
+def plot(verbose, start, goal, trend, filename):
     dates, weights = parse_data(filename, start)
 
     dirname = os.path.dirname(filename)
     basename = os.path.basename(filename).removesuffix(".csv") + ".pdf"
     output_filename = os.path.join(dirname, basename)
 
-    plot_data(dates, weights, output_filename, goal, start_date=start,
+    plot_data(dates, weights, output_filename, goal, trend, start_date=start,
         verbose=verbose)
 
 
@@ -193,7 +214,7 @@ def invert(verbose, start, goal, filename):
     output_filename = os.path.join(dirname, basename)
 
     plot_inverted_data(weight_grid, durations, output_filename, goal,
-        verbose=verbose)
+        start, verbose=verbose)
 
 
 if __name__ == "__main__":

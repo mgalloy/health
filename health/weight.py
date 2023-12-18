@@ -1,4 +1,5 @@
 import datetime
+import math
 import os
 
 import matplotlib
@@ -115,6 +116,35 @@ def plot_data(dates, weights, output_filename, goal, trend, start_date=None,
     plt.savefig(output_filename)
 
 
+def plot_histogram_data(weights, output_filename, goal, start_date, verbose=False):
+    fig, ax = plt.subplots(figsize=(8.5, 4.0))
+
+    bins_per_pound = 1
+    weight_range = (math.floor(weights.min()), math.ceil(weights.max()))
+    bins = int((weight_range[1] - weight_range[0]) / bins_per_pound)
+
+    plt.hist(weights, range=weight_range, bins=bins)
+
+    if goal is not None:
+        ax.axvline(x=goal, color="red", linewidth=1.0)
+
+    ax.spines[['right', 'top']].set_visible(False)
+
+    plt.xlabel("Weight (lbs)")
+    plt.ylabel("Days")
+
+    if start_date is None:
+        title = "Number of days at a given weight"
+    else:
+        since_date = start_date.strftime("%Y-%m-%d")
+        n_total_days = round((NOW - start_date).total_seconds() / 24.0 / 60.0 / 60.0)
+        title = f"Number of days at a given weight since {since_date} ({n_total_days} days)"
+
+    plt.title(title, y=1.0)
+
+    plt.savefig(output_filename)
+
+
 def plot_inverted_data(weight_grid, durations, output_filename, goal, start_date,
     verbose=False):
     n_days = []
@@ -176,7 +206,7 @@ def weight_date(date_string):
     return(datetime.datetime.strptime(date_string, START_DATE_FMT))
 
 
-@cli.command()
+@cli.command(help="plot weight as a time series")
 @click.help_option("-h", "--help")
 @click.option("--verbose", help="set to display more info", is_flag=True)
 @click.option("--start", help="start date in the format YYYY-MM-DD",
@@ -197,7 +227,7 @@ def plot(verbose, start, goal, trend, filename):
         verbose=verbose)
 
 
-@cli.command()
+@cli.command(help="plot number of days under a given weight")
 @click.help_option("-h", "--help")
 @click.option("--verbose", help="set to display more info", is_flag=True)
 @click.option("--start", help="start date in the format YYYY-MM-DD",
@@ -214,6 +244,25 @@ def invert(verbose, start, goal, filename):
     output_filename = os.path.join(dirname, basename)
 
     plot_inverted_data(weight_grid, durations, output_filename, goal,
+        start, verbose=verbose)
+
+
+@cli.command(help="plot histogram of weight")
+@click.help_option("-h", "--help")
+@click.option("--verbose", help="set to display more info", is_flag=True)
+@click.option("--start", help="start date in the format YYYY-MM-DD",
+    type=weight_date, required=False, default=None)
+@click.option("--goal", help="goal weight",
+    type=float, required=False, default=None)
+@click.argument("filename")
+def histogram(verbose, start, goal, filename):
+    dates, weights = parse_data(filename, start)
+
+    dirname = os.path.dirname(filename)
+    basename = os.path.basename(filename).removesuffix(".csv") + ".histogram.pdf"
+    output_filename = os.path.join(dirname, basename)
+
+    plot_histogram_data(weights, output_filename, goal,
         start, verbose=verbose)
 
 
